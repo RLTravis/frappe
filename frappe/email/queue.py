@@ -351,6 +351,9 @@ def get_unsubscribe_message(unsubscribe_message: str, expose_recipients: str):
 def get_unsubcribed_url(
 	reference_doctype, reference_name, email, unsubscribe_method, unsubscribe_params
 ):
+	if not reference_name:
+		return None
+
 	params = {
 		"email": email.encode("utf-8"),
 		"doctype": reference_doctype.encode("utf-8"),

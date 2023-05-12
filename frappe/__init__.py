@@ -1795,6 +1795,7 @@ def get_value(*args, **kwargs):
 		return frappe.db.get_value("DocType", doctype, "is_virtual")
 
 	doctype = args[0]
+
 	if is_virtual_doctype(doctype):
 		from frappe.model.base_document import get_controller
 
