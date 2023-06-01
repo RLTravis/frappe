@@ -103,7 +103,7 @@ frappe.views.CommunicationComposer = class {
 				label: __("Add Signature"),
 				fieldname: 'add_signature',
 				hidden: 1,
-				click: async function() {
+				click: async function () {
 					let sender_email = this.dialog.get_value('sender') || "";
 					this.content_set = false;
 					await this.set_content(sender_email);
@@ -155,7 +155,7 @@ frappe.views.CommunicationComposer = class {
 		});
 
 		if (email_accounts.length) {
-			this.user_email_accounts = email_accounts.map(function(e) {
+			this.user_email_accounts = email_accounts.map(function (e) {
 				return e.email_id;
 			});
 
@@ -167,7 +167,7 @@ frappe.views.CommunicationComposer = class {
 				options: this.user_email_accounts
 			});
 			//Preselect email senders if there is only one
-			if (this.user_email_accounts.length==1) {
+			if (this.user_email_accounts.length == 1) {
 				this['sender'] = this.user_email_accounts
 			}
 		}
@@ -179,7 +179,7 @@ frappe.views.CommunicationComposer = class {
 		show_options = show_options || this.dialog.fields_dict.more_options.df.hidden;
 		this.dialog.set_df_property('more_options', 'hidden', !show_options);
 
-		const label = frappe.utils.icon(show_options ? 'up-line': 'down');
+		const label = frappe.utils.icon(show_options ? 'up-line' : 'down');
 		this.dialog.get_field('option_toggle_button').set_label(label);
 	}
 
@@ -209,7 +209,7 @@ frappe.views.CommunicationComposer = class {
 
 				frappe.call({
 					method: "frappe.email.get_contact_list",
-					args: {txt},
+					args: { txt },
 					callback: (r) => {
 						this.dialog.fields_dict[field].set_data(r.message);
 					}
@@ -242,7 +242,7 @@ frappe.views.CommunicationComposer = class {
 				}
 
 				// prepend "Re:"
-				if (strip(this.subject.toLowerCase().split(":")[0])!="re") {
+				if (strip(this.subject.toLowerCase().split(":")[0]) != "re") {
 					this.subject = __("Re: {0}", [this.subject]);
 				}
 			}
@@ -419,7 +419,7 @@ frappe.views.CommunicationComposer = class {
 
 		//On selection of language retrieve language code
 		const me = this;
-		$(fields.language_sel.input).change(function(){
+		$(fields.language_sel.input).change(function () {
 			me.lang_code = this.value
 		})
 
@@ -438,7 +438,7 @@ frappe.views.CommunicationComposer = class {
 		const fields = this.dialog.fields_dict;
 
 		// toggle print format
-		$(fields.attach_document_print.input).click(function() {
+		$(fields.attach_document_print.input).click(function () {
 			$(fields.select_print_format.wrapper).toggle($(this).prop("checked"));
 		});
 
@@ -536,7 +536,7 @@ frappe.views.CommunicationComposer = class {
 				<input
 					type="checkbox"
 					data-file-name="${attachment.name}"
-					${checked ? 'checked': ''}>
+					${checked ? 'checked' : ''}>
 				</input>
 				<span class="ellipsis">${attachment.file_name}</span>
 			</label>
@@ -594,8 +594,8 @@ frappe.views.CommunicationComposer = class {
 			if (df.is_cc_checkbox) {
 				// concat in cc
 				if (form_values[df.fieldname]) {
-					form_values.cc = ( form_values.cc ? (form_values.cc + ", ") : "" ) + df.fieldname;
-					form_values.bcc = ( form_values.bcc ? (form_values.bcc + ", ") : "" ) + df.fieldname;
+					form_values.cc = (form_values.cc ? (form_values.cc + ", ") : "") + df.fieldname;
+					form_values.bcc = (form_values.bcc ? (form_values.bcc + ", ") : "") + df.fieldname;
 				}
 
 				delete form_values[df.fieldname];
@@ -659,7 +659,7 @@ frappe.views.CommunicationComposer = class {
 
 
 		return frappe.call({
-			method:"frappe.core.doctype.communication.email.make",
+			method: "frappe.core.doctype.communication.email.make",
 			args: {
 				recipients: form_values.recipients,
 				cc: form_values.cc,
@@ -678,8 +678,8 @@ frappe.views.CommunicationComposer = class {
 					: undefined,
 				email_template: form_values.email_template,
 				attachments: selected_attachments,
-				_lang : me.lang_code,
-				read_receipt:form_values.send_read_receipt,
+				_lang: me.lang_code,
+				read_receipt: form_values.send_read_receipt,
 				print_letterhead: me.is_print_letterhead_checked(),
 			},
 			btn,
@@ -689,7 +689,7 @@ frappe.views.CommunicationComposer = class {
 
 					if (r.message["emails_not_sent_to"]) {
 						frappe.msgprint(__("Email not sent to {0} (unsubscribed / disabled)",
-							[ frappe.utils.escape_html(r.message["emails_not_sent_to"]) ]) );
+							[frappe.utils.escape_html(r.message["emails_not_sent_to"])]));
 					}
 
 					me.clear_cache();
@@ -724,7 +724,7 @@ frappe.views.CommunicationComposer = class {
 	}
 
 	is_print_letterhead_checked() {
-		if (this.frm && $(this.frm.wrapper).find('.form-print-wrapper').is(':visible')){
+		if (this.frm && $(this.frm.wrapper).find('.form-print-wrapper').is(':visible')) {
 			return $(this.frm.wrapper).find('.print-letterhead').prop('checked') ? 1 : 0;
 		} else {
 			return (frappe.model.get_doc(":Print Settings", "Print Settings") ||

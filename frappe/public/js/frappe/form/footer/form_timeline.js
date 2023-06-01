@@ -436,7 +436,7 @@ class FormTimeline extends BaseTimeline {
 			is_a_reply: Boolean(communication_doc),
 			title: communication_doc ? __('Reply') : null,
 			last_email: communication_doc,
-			subject: communication_doc && communication_doc.subject
+			subject: communication_doc ? __('{0} (#{1})', [communication_doc.subject, communication_doc.reference_name]) : ''
 		};
 
 		if (communication_doc && reply_all) {

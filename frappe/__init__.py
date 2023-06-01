@@ -1138,7 +1138,17 @@ def delete_doc(
 	:param for_reload: Call `before_reload` trigger before deleting.
 	:param ignore_permissions: Ignore user permissions.
 	:param delete_permanently: Do not create a Deleted Document for the document."""
+	def is_virtual_doctype(doctype):
+		import frappe
+		return frappe.db.get_value("DocType", doctype, "is_virtual")
+
 	import frappe.model.delete_doc
+
+	if doctype and name and is_virtual_doctype(doctype):
+		doc = frappe.get_doc(doctype, name)
+		doc.delete(ignore_permissions, force)
+
+		return
 
 	frappe.model.delete_doc.delete_doc(
 		doctype,
@@ -1724,9 +1734,19 @@ def get_list(doctype, *args, **kwargs):
 	        # filter as a list of dicts
 	        frappe.get_list("ToDo", fields="*", filters = {"description": ("like", "test%")})
 	"""
-	import frappe.model.db_query
+	def is_virtual_doctype(doctype):
+		import frappe
+		return frappe.db.get_value("DocType", doctype, "is_virtual")
 
-	return frappe.model.db_query.DatabaseQuery(doctype).execute(*args, **kwargs)
+	if is_virtual_doctype(doctype):
+		from frappe.model.base_document import get_controller
+
+		controller = get_controller(doctype)
+		return controller.get_list(kwargs)
+	else:
+		import frappe.model.db_query
+
+		return frappe.model.db_query.DatabaseQuery(doctype).execute(*args, **kwargs)
 
 
 def get_all(doctype, *args, **kwargs):
@@ -1769,6 +1789,18 @@ def get_value(*args, **kwargs):
 	:param as_dict: Return values as dict.
 	:param debug: Print query in error log.
 	"""
+
+	def is_virtual_doctype(doctype):
+		import frappe
+		return frappe.db.get_value("DocType", doctype, "is_virtual")
+
+	doctype = args[0]
+	if is_virtual_doctype(doctype):
+		from frappe.model.base_document import get_controller
+
+		controller = get_controller(doctype)
+		return controller.get_value(args, kwargs)
+
 	return db.get_value(*args, **kwargs)
 
 

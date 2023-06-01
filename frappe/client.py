@@ -446,7 +446,15 @@ def validate_link(doctype: str, docname: str, fields=None):
 		)
 
 	values = frappe._dict()
-	values.name = frappe.db.get_value(doctype, docname, cache=True)
+
+	def is_virtual_doctype(doctype):
+		import frappe
+		return frappe.db.get_value("DocType", doctype, "is_virtual")
+
+	if is_virtual_doctype(doctype):
+		values.name = docname
+	else:
+		values.name = frappe.db.get_value(doctype, docname, cache=True)
 
 	fields = frappe.parse_json(fields)
 	if not values.name or not fields:

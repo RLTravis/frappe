@@ -32,7 +32,7 @@ from frappe.utils.background_jobs import get_jobs
 from frappe.utils.jinja import validate_template
 from frappe.utils.user import get_system_managers
 
-month_map = {"Monthly": 1, "Quarterly": 3, "Half-yearly": 6, "Yearly": 12}
+month_map = {"Monthly": 1, "Bimestrale":2, "Quarterly": 3, "Half-yearly": 6, "Yearly": 12}
 week_map = {
 	"Monday": 0,
 	"Tuesday": 1,
@@ -457,7 +457,7 @@ def create_repeated_entries(data):
 		current_date = getdate(today())
 		schedule_date = getdate(doc.next_schedule_date)
 
-		if schedule_date == current_date and not doc.disabled:
+		if schedule_date <= current_date and not doc.disabled:
 			doc.create_documents()
 			schedule_date = doc.get_next_schedule_date(schedule_date=schedule_date)
 			if schedule_date and not doc.disabled:

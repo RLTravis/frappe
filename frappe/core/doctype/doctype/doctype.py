@@ -1077,7 +1077,7 @@ def validate_fields(meta):
 					NonUniqueError,
 				)
 
-			if not d.get("__islocal") and frappe.db.has_column(d.parent, d.fieldname):
+			if not d.get("__islocal") and not meta.is_virtual and frappe.db.has_column(d.parent, d.fieldname):
 				has_non_unique_values = frappe.db.sql(
 					"""select `{fieldname}`, count(*)
 					from `tab{doctype}` where ifnull(`{fieldname}`, '') != ''

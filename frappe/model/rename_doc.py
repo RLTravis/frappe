@@ -350,7 +350,17 @@ def update_link_field_values(link_fields, old, new, doctype):
 			if parent == new and doctype == "DocType":
 				parent = old
 
-			frappe.db.set_value(parent, {docfield: old}, docfield, new, update_modified=False)
+			def is_virtual_doctype(doctype):
+				import frappe
+				return frappe.db.get_value("DocType", doctype, "is_virtual")
+
+			if is_virtual_doctype(parent):
+				from frappe.model.base_document import get_controller
+
+				controller = get_controller(parent)
+				controller.set_value({docfield: old}, docfield, new, update_modified=False)
+			else:
+				frappe.db.set_value(parent, {docfield: old}, docfield, new, update_modified=False)
 
 		# update cached link_fields as per new
 		if doctype == "DocType" and field["parent"] == old:
