@@ -3,14 +3,14 @@
 frappe.provide("frappe.auto_repeat");
 
 frappe.ui.form.on('Auto Repeat', {
-	setup: function(frm) {
-		frm.fields_dict['reference_doctype'].get_query = function() {
+	setup: function (frm) {
+		frm.fields_dict['reference_doctype'].get_query = function () {
 			return {
 				query: "frappe.automation.doctype.auto_repeat.auto_repeat.get_auto_repeat_doctypes"
 			};
 		};
 
-		frm.fields_dict['reference_document'].get_query = function() {
+		frm.fields_dict['reference_document'].get_query = function () {
 			return {
 				filters: {
 					"auto_repeat": ''
@@ -18,7 +18,7 @@ frappe.ui.form.on('Auto Repeat', {
 			};
 		};
 
-		frm.fields_dict['print_format'].get_query = function() {
+		frm.fields_dict['print_format'].get_query = function () {
 			return {
 				filters: {
 					"doc_type": frm.doc.reference_doctype
@@ -27,7 +27,7 @@ frappe.ui.form.on('Auto Repeat', {
 		};
 	},
 
-	refresh: function(frm) {
+	refresh: function (frm) {
 		// auto repeat message
 		if (frm.is_new()) {
 			let customize_form_link = `<a href="/app/customize-form">${__('Customize Form')}</a>`;
@@ -48,11 +48,11 @@ frappe.ui.form.on('Auto Repeat', {
 		frm.trigger('toggle_submit_on_creation');
 	},
 
-	reference_doctype: function(frm) {
+	reference_doctype: function (frm) {
 		frm.trigger('toggle_submit_on_creation');
 	},
 
-	toggle_submit_on_creation: function(frm) {
+	toggle_submit_on_creation: function (frm) {
 		// submit on creation checkbox
 		if (frm.doc.reference_doctype) {
 			frappe.model.with_doctype(frm.doc.reference_doctype, () => {
@@ -62,7 +62,7 @@ frappe.ui.form.on('Auto Repeat', {
 		}
 	},
 
-	template: function(frm) {
+	template: function (frm) {
 		if (frm.doc.template) {
 			frappe.model.with_doc("Email Template", frm.doc.template, () => {
 				let email_template = frappe.get_doc("Email Template", frm.doc.template);
@@ -74,11 +74,11 @@ frappe.ui.form.on('Auto Repeat', {
 		}
 	},
 
-	get_contacts: function(frm) {
+	get_contacts: function (frm) {
 		frm.call('fetch_linked_contacts');
 	},
 
-	preview_message: function(frm) {
+	preview_message: function (frm) {
 		if (frm.doc.message) {
 			frappe.call({
 				method: "frappe.automation.doctype.auto_repeat.auto_repeat.generate_message_preview",
@@ -88,7 +88,7 @@ frappe.ui.form.on('Auto Repeat', {
 					subject: frm.doc.subject,
 					message: frm.doc.message
 				},
-				callback: function(r) {
+				callback: function (r) {
 					if (r.message) {
 						frappe.msgprint(r.message.message, r.message.subject)
 					}
@@ -100,10 +100,10 @@ frappe.ui.form.on('Auto Repeat', {
 	}
 });
 
-frappe.auto_repeat.render_schedule = function(frm) {
+frappe.auto_repeat.render_schedule = function (frm) {
 	if (!frm.is_dirty() && frm.doc.status !== 'Disabled') {
 		frm.call("get_auto_repeat_schedule").then(r => {
-			frm.dashboard.wrapper.empty();
+			frm.dashboard.reset();
 			frm.dashboard.add_section(
 				frappe.render_template("auto_repeat_schedule", {
 					schedule_details: r.message || []

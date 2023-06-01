@@ -272,7 +272,7 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 		this.refresh(true);
 	}
 
-	refresh(refresh_header=false) {
+	refresh(refresh_header = false) {
 		super.refresh().then(() => {
 			this.render_header(refresh_header);
 			this.update_checkbox();
@@ -419,9 +419,8 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 
 	get_documentation_link() {
 		if (this.meta.documentation) {
-			return `<a href="${
-				this.meta.documentation
-			}" target="blank" class="meta-description small text-muted">Need Help?</a>`;
+			return `<a href="${this.meta.documentation
+				}" target="blank" class="meta-description small text-muted">Need Help?</a>`;
 		}
 		return "";
 	}
@@ -515,7 +514,7 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 		}
 	}
 
-	render_header(refresh_header=false) {
+	render_header(refresh_header = false) {
 		if (refresh_header) {
 			this.$result.find('.list-row-head').remove();
 		}
@@ -607,7 +606,7 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 				let classes = [
 					"list-row-col ellipsis",
 					col.type == "Subject" ? "list-subject level" : "hidden-xs",
-					col.type == "Tag" ? "tag-col hide": "",
+					col.type == "Tag" ? "tag-col hide" : "",
 					frappe.model.is_numeric_field(col.df) ? "text-right" : "",
 				].join(" ");
 
@@ -809,7 +808,7 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 		`;
 	}
 
-	get_tags_html(user_tags, limit, colored=false) {
+	get_tags_html(user_tags, limit, colored = false) {
 		let get_tag_html = tag => {
 			let color = '', style = '';
 			if (tag) {
@@ -854,9 +853,8 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 				</div>`;
 		}
 
-		const comment_count = `<span class="${
-			!doc._comment_count ? "text-extra-muted" : ""
-		} comment-count">
+		const comment_count = `<span class="${!doc._comment_count ? "text-extra-muted" : ""
+			} comment-count">
 				${frappe.utils.icon('small-message')}
 				${doc._comment_count > 99 ? "99+" : doc._comment_count}
 			</span>`;
@@ -965,13 +963,23 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 
 	get_indicator_html(doc) {
 		const indicator = frappe.get_indicator(doc, this.doctype);
+		let html_ret = '';
+
 		if (indicator) {
-			return `<span class="indicator-pill ${indicator[1]} filterable ellipsis"
+			html_ret = `<span class="indicator-pill ${indicator[1]} filterable ellipsis"
 				data-filter='${indicator[2]}'>
 				<span class="ellipsis"> ${__(indicator[0])}</span>
 			<span>`;
 		}
-		return "";
+
+		if (doc.__unsaved) {
+			html_ret += `<span class="indicator-pill orange filterable ellipsis"
+				data-filter="">
+				<span class="ellipsis"> ${__('Not Saved')}</span>
+			<span>`;
+		}
+
+		return html_ret;
 	}
 
 	get_indicator_dot(doc) {
@@ -1439,7 +1447,7 @@ frappe.views.ListView = class ListView extends frappe.views.BaseList {
 		);
 	}
 
-	on_update() {}
+	on_update() { }
 
 	get_share_url() {
 		const query_params = this.get_filters_for_args()

@@ -3,6 +3,7 @@
 
 from __future__ import print_function, unicode_literals
 
+from email.utils import parseaddr
 import imaplib
 import json
 import re
@@ -498,6 +499,7 @@ class EmailAccount(Document):
 				"sender": email.from_email,
 				"recipients": email.mail.get("To"),
 				"cc": email.mail.get("CC"),
+				"in_reply_to_id": get_string_between('<', email.mail.get('In-Reply-To') or '', '>'),
 				"email_account": self.name,
 				"communication_medium": "Email",
 				"uid": int(uid or -1),
@@ -535,8 +537,40 @@ class EmailAccount(Document):
 			# not sure if using save() will trigger anything
 			communication.db_set("content", sanitize_html(email.content))
 
+		raised_to = (frappe.db.get_value(communication.reference_doctype, communication.reference_name, 'raised_to') or '').split(', ')
+		raised_to = [parseaddr(to)[1] for to in raised_to]
+
+		raised_cc = (frappe.db.get_value(communication.reference_doctype, communication.reference_name, 'raised_cc') or '').split(', ')
+		raised_cc = [parseaddr(to)[1] for to in raised_cc]
+
+		skip_auto_reply = False
+
+		# If one of the following addresses is in the email headers "From", "Cc" or "To", is an internal communication
+		# 	ticket@voip.erre-elle.net
+		# 	ticket@tvcc.erre-elle.net
+		# 	ticket@rete.erre-elle.net
+
+		# If helpdesk@erre-elle.net (or an alias) is in the email header "From", is a loop (helpdesk@erre-elle.net -> helpdesk@erre-elle.net)
+
+		# In this cases, don't send the reply
+		if 'ticket@voip.erre-elle.net' in (raised_to + raised_cc) \
+				or 'ticket@tvcc.erre-elle.net' in (raised_to + raised_cc) \
+				or 'ticket@rete.erre-elle.net' in (raised_to + raised_cc) \
+				or email.from_email in [
+					'helpdesk@erre-elle.net',
+					'helpdesk-aslto5@erre-elle.net',
+					'helpdesk-cybertel@erre-elle.net',
+					'helpdesk.ps@erre-elle.net',
+					'ticket@erre-elle.net',
+
+					'ticket@voip.erre-elle.net',
+					'ticket@tvcc.erre-elle.net',
+					'ticket@rete.erre-elle.net',
+				]:
+			skip_auto_reply = True
+
 		# notify all participants of this thread
-		if self.enable_auto_reply and getattr(communication, "is_first", False):
+		if not skip_auto_reply and self.enable_auto_reply and getattr(communication, "is_first", False):
 			self.send_auto_reply(communication, email)
 
 		return communication
@@ -548,9 +582,45 @@ class EmailAccount(Document):
 
 		If no thread id is found and `append_to` is set for the email account,
 		it will create a new parent transaction (e.g. Issue)"""
-		parent = None
 
-		parent = self.find_parent_from_in_reply_to(communication, email)
+		def clean_emails(string_with_emails: str) -> str:
+			list_with_emails = string_with_emails.split(',')
+			list_with_emails = [addr.strip()
+													for addr in list_with_emails]
+			list_with_emails = [re.sub(r'^.*\<(.+)\>$', r'\1', addr)
+													for addr in list_with_emails]
+			list_with_emails = ', '.join(list_with_emails)
+
+			return list_with_emails
+
+		parent = None
+		original_subject = frappe.as_unicode(email.subject)
+
+		if re.match(
+				r'^[Mm][Aa][Ii][Ll][Ee][Rr]\-[Dd][Aa][Ee][Mm][Oo][Nn]\@(smtp3?\.)?erre\-elle\.net$',
+				frappe.as_unicode(email.from_email)
+		) \
+				and re.match(
+					r'^Undelivered Mail Returned to Sender$',
+					original_subject
+				) \
+				and clean_emails(
+					frappe.as_unicode(
+						email.mail.get('To')
+					)
+				) == 'helpdesk@erre-elle.net' \
+				and email.text_content \
+				and any(
+					[re.match(
+						r'^\<?[Mm][Aa][Ii][Ll][Ee][Rr]\-[Dd][Aa][Ee][Mm][Oo][Nn]\@(smtp3?\.)?erre\-elle\.net\>?\: mail for (smtp3?\.)?erre\-elle\.net loops back to.*$',
+						row
+					)
+					 for row in frappe.as_unicode(email.text_content).splitlines()]
+				):
+			return None
+
+		if original_subject and original_subject.startswith('Resolved in '):
+			parent = self.find_parent_from_in_reply_to(communication, email)
 
 		if not parent and self.append_to:
 			self.set_sender_field_and_subject_field()
@@ -564,6 +634,98 @@ class EmailAccount(Document):
 		if parent:
 			communication.reference_doctype = parent.doctype
 			communication.reference_name = parent.name
+
+			if parent.status == 'Closed':
+				doc = frappe.get_doc(parent.doctype, parent.name)
+				doc.status = 'Open'
+				doc.reset_service_level_agreement('Re-opening ticket', frappe.session.user, False)
+				doc.first_responded_on = None
+
+				try:
+					doc.save()
+
+					assign_to.close_all_assignments(parent.doctype, parent.name)
+					assign_to.add(
+						{
+							'doctype': parent.doctype,
+							'name': parent.name,
+							'assign_to': [
+								parent.assegnato_a,
+							],
+							'priority': 'High' if parent.priority == 'Urgente' else parent.priority,
+							'notify': 1,
+						}
+					)
+				except Exception as e:
+					subject = 'I failed to re-open an Issue from a email'
+
+					frappe.sendmail(
+						recipients='test-dev@erre-elle.net',
+						subject=subject,
+						message='Reason: {}<br><br>Communication:<br>{}<br><br>Email:<br>{}<br><br>{}:<br>{}<br><br>Email Account:<br>{}'.format(
+							e,
+							json.dumps(communication.as_dict(convert_dates_to_str=True), indent=2),
+							json.dumps(email.as_dict(convert_dates_to_str=True), indent=2),
+							parent.doctype,
+							json.dumps(parent.as_dict(convert_dates_to_str=True), indent=2),
+							json.dumps(self.as_dict(convert_dates_to_str=True), indent=2)
+						),
+						header=[
+							subject,
+							'red',
+						]
+					)
+			elif original_subject and original_subject.startswith('Resolved in ') and parent.status != 'Closed':
+				_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+				try:
+					parent.status = 'Closed'
+					parent.agreement_status = 'Fulfilled'
+					parent.first_responded_on = _now
+					parent.resolution_date = _now
+
+					frappe.db.set_value(parent.doctype, parent.name, 'status', 'Closed')
+					frappe.db.set_value(parent.doctype, parent.name, 'agreement_status', 'Fulfilled')
+					frappe.db.set_value(parent.doctype, parent.name, 'first_responded_on', _now)
+					frappe.db.set_value(parent.doctype, parent.name, 'resolution_date', _now)
+					frappe.db.commit()
+
+					assign_to.close_all_assignments(parent.doctype, parent.name)
+				except Exception as e:
+					subject = 'I failed to close an Issue from a email'
+
+					frappe.sendmail(
+						recipients='test-dev@erre-elle.net',
+						subject=subject,
+						message='Reason: {}<br><br>Communication:<br>{}<br><br>Email:<br>{}<br><br>{}:<br>{}<br><br>Email Account:<br>{}'.format(
+							e,
+							json.dumps(communication.as_dict(convert_dates_to_str=True), indent=2),
+							json.dumps(email.as_dict(convert_dates_to_str=True), indent=2),
+							parent.doctype,
+							json.dumps(parent.as_dict(convert_dates_to_str=True), indent=2),
+							json.dumps(self.as_dict(convert_dates_to_str=True), indent=2)
+						),
+						header=[
+							subject,
+							'red',
+						]
+					)
+		else:
+			subject = 'I failed to create/re-open an Issue from a email'
+
+			frappe.sendmail(
+				recipients='test-dev@erre-elle.net',
+				subject=subject,
+				message='Reason: Unknown<br><br>Communication:<br>{}<br><br>Email:<br>{}<br><br>Email Account:<br>{}'.format(
+					json.dumps(communication.as_dict(convert_dates_to_str=True), indent=2),
+					json.dumps(email.as_dict(convert_dates_to_str=True), indent=2),
+					json.dumps(self.as_dict(convert_dates_to_str=True), indent=2)
+				),
+				header=[
+					subject,
+					'red',
+				]
+			)
 
 		# check if message is notification and disable notifications for this message
 		isnotification = email.mail.get("isnotification")
@@ -585,72 +747,221 @@ class EmailAccount(Document):
 			self.sender_field = meta.sender_field
 
 	def find_parent_based_on_subject_and_sender(self, communication, email):
-		"""Find parent document based on subject and sender match"""
+		"""
+		Find parent document based on subject and sender match
+		"""
+
+		if not self.append_to or not self.sender_field:
+			return None
+
+		def check_same_subject(subject_field, parent, actual_subject):
+			return subject_field \
+				and parent and subject_field in parent \
+				and actual_subject and parent[subject_field] \
+				and parent[subject_field] == actual_subject[:140]
+
 		parent = None
+		subject = None
 
-		if self.append_to and self.sender_field:
-			if self.subject_field:
-				if "#" in email.subject:
-					# try and match if ID is found
-					# document ID is appended to subject
-					# example "Re: Your email (#OPP-2020-2334343)"
-					parent_id = email.subject.rsplit("#", 1)[-1].strip(" ()")
-					if parent_id:
-						parent = frappe.db.get_all(self.append_to, filters=dict(name=parent_id), fields="name")
+		if self.subject_field:
+			# try and match by subject and sender
+			# if sent by same sender with same subject,
+			# append it to old coversation
+			subject = strip(
+					re.sub(
+						r'^(\s*(fw|fwd|wg|r|re|aw|i)[^:]*:\s*)*',
+						'',
+						frappe.as_unicode(email.subject),
+						0,
+						flags=re.IGNORECASE
+					)
+			)
 
-				if not parent:
-					# try and match by subject and sender
-					# if sent by same sender with same subject,
-					# append it to old coversation
-					subject = frappe.as_unicode(
-						strip(
-							re.sub(
-								r"(^\s*(fw|fwd|wg)[^:]*:|\s*(r|re|aw)[^:]*:\s*)*", "", email.subject, 0, flags=re.IGNORECASE
-							)
-						)
+		if self.subject_field and '#' in email.subject:
+			# try and match if ID is found
+			# document ID is appended to subject
+			# example "Re: Your email (#OPP-2020-2334343)"
+			parent_id = email.subject.rsplit('#', 1)[-1].strip(' ()')
+
+			if parent_id:
+				parent = frappe.db.get_all(
+					self.append_to,
+					filters={
+						'name': parent_id,
+					},
+					fields='name'
+				)
+
+		if not parent and email.references:
+			res = None
+			_find = False
+
+			try:
+				while not res:
+					res = frappe.db.sql(
+						"""
+						SELECT *
+						FROM `tabCommunication`
+						WHERE `message_id` = {}
+						ORDER BY `creation` DESC
+						""".format(frappe.db.escape(email.references.pop())),
+						as_dict=True
 					)
 
-					parent = frappe.db.get_all(
-						self.append_to,
-						filters={
-							self.sender_field: email.from_email,
-							self.subject_field: ("like", "%{0}%".format(subject)),
-							"creation": (">", (get_datetime() - relativedelta(days=60)).strftime(DATE_FORMAT)),
-						},
-						fields="name",
-						limit=1,
-					)
+					if res \
+							and (
+								not res[0]['reference_doctype']
+								or not res[0]['reference_name']
+							):
+						res = None
+						_find = True
+			except IndexError:
+				pass
 
-				if not parent and len(subject) > 10 and is_system_user(email.from_email):
-					# match only subject field
-					# when the from_email is of a user in the system
-					# and subject is atleast 10 chars long
-					parent = frappe.db.get_all(
-						self.append_to,
-						filters={
-							self.subject_field: ("like", "%{0}%".format(subject)),
-							"creation": (">", (get_datetime() - relativedelta(days=60)).strftime(DATE_FORMAT)),
-						},
-						fields="name",
-						limit=1,
-					)
+			if not res and _find:
+				_subject = 'Found ticket not opened from the original email.'
 
-			if parent:
-				parent = frappe._dict(doctype=self.append_to, name=parent[0].name)
-				return parent
+				frappe.sendmail(
+					recipients='test-dev@erre-elle.net',
+					subject=_subject,
+					message='Result:<br>{}<br><br>Email:<br>{}'.format(
+						json.dumps(res, indent=2),
+						json.dumps(email.as_dict(convert_dates_to_str=True), indent=2)
+					),
+					header=[
+						_subject,
+						'red',
+					]
+				)
+
+				return None
+			elif res and len(res) != 1:
+				_subject = 'Found more then 1 result for research with message_id.'
+
+				frappe.sendmail(
+					recipients='test-dev@erre-elle.net',
+					subject=_subject,
+					message='Results:<br>{}<br><br>Email:<br>{}'.format(
+						json.dumps(res, indent=2),
+						json.dumps(email.as_dict(convert_dates_to_str=True), indent=2)
+					),
+					header=[
+						_subject,
+						'red',
+					]
+				)
+
+				res = [row
+							 for row in res
+							 if row['reference_doctype'] and row['reference_name'] and check_same_subject(self.subject_field, row, subject)]
+				res = sorted(res, key=lambda row: row['modified'], reverse=True)
+
+				if not res:
+					return None
+
+				parent = frappe.db.get_all(
+					res[0]['reference_doctype'],
+					filters={
+						'name': res[0]['reference_name'],
+					},
+					fields='name',
+					limit=1,
+				)
+			elif res:
+				parent = frappe.db.get_all(
+					res[0]['reference_doctype'],
+					filters={
+						'name': res[0]['reference_name'],
+					},
+					fields=['name', self.subject_field,] if self.subject_field else 'name',
+					limit=1,
+				)
+
+				if not parent or not check_same_subject(self.subject_field, parent[0], subject):
+					parent = None
+
+		if not parent \
+				and email.content \
+				and re.match(
+					r'^.+(Original problem ID\: [0-9]+)([^0-9].*)?$',
+					email.content.replace('\r\n', '')
+				):
+			parent = frappe.db.sql(
+				"""
+				SELECT `reference_name` AS `name`
+				FROM `tabCommunication`
+				WHERE `content` LIKE '%{}%'
+				ORDER BY `modified` DESC
+				LIMIT 1
+				""".format(
+					re.sub(
+						r'^.+(Original problem ID\: [0-9]+)([^0-9].*)?$',
+						r'\1',
+						email.content.replace('\r\n', '')
+					)
+				),
+				as_dict=True
+			)
+
+		if parent and parent[0].name:
+			parent = frappe._dict(doctype=self.append_to, name=parent[0].name)
+		else:
+			parent = None
+
+		return parent
 
 	def create_new_parent(self, communication, email):
 		"""If no parent found, create a new reference document"""
+
+		def clean_emails(string_with_emails: str) -> str:
+			list_with_emails = string_with_emails.split(',')
+			list_with_emails = [addr.strip()
+													for addr in list_with_emails]
+			list_with_emails = [re.sub(r'^.*\<(.+)\>$', r'\1', addr)
+													for addr in list_with_emails]
+			list_with_emails = ', '.join(list_with_emails)
+
+			return list_with_emails
 
 		# no parent found, but must be tagged
 		# insert parent type doc
 		parent = frappe.new_doc(self.append_to)
 
 		if self.subject_field:
-			parent.set(self.subject_field, frappe.as_unicode(email.subject)[:140])
+			# try and match by subject and sender
+			# if sent by same sender with same subject,
+			# append it to old coversation
+			subject = strip(
+					re.sub(
+						r'^(\s*(fw|fwd|wg|r|re|aw|i)[^:]*:\s*)*',
+						'',
+						frappe.as_unicode(email.subject),
+						0,
+						flags=re.IGNORECASE
+					)
+			)
+			parent.set(self.subject_field, subject[:140])
 
 		if self.sender_field:
 			parent.set(self.sender_field, frappe.as_unicode(email.from_email))
+
+		if self.append_to == 'Issue':
+			parent.set(
+				'raised_to',
+				clean_emails(
+					frappe.as_unicode(
+						email.mail.get('To')
+					)
+				)
+			)
+			parent.set(
+				'raised_cc',
+				clean_emails(
+					frappe.as_unicode(
+						email.mail.get('CC')
+					)
+				)
+			)
 
 		if parent.meta.has_field("email_account"):
 			parent.email_account = self.name
@@ -666,6 +977,42 @@ class EmailAccount(Document):
 				parent.name = parent_name
 			else:
 				parent = None
+				subject = 'I failed to create an Issue from a email'
+
+				frappe.sendmail(
+					recipients='test-dev@erre-elle.net',
+					subject=subject,
+					message='Reason: Unable to find matching parent<br>frappe.db.get_value({}, {{{}: {}}}): {}<br><br>Issue:<br>{}<br><br>Email:<br>{}'.format(
+						self.append_to,
+						self.sender_field,
+						email.from_email,
+						parent_name,
+						json.dumps(parent.as_dict(convert_dates_to_str=True), indent=2),
+						json.dumps(email.as_dict(convert_dates_to_str=True), indent=2)
+					),
+					header=[
+						subject,
+						'red',
+					]
+				)
+		except Exception as e:
+			subject = 'I failed to create an Issue from a email'
+
+			frappe.sendmail(
+				recipients='test-dev@erre-elle.net',
+				subject=subject,
+				message='Reason: {}<br><br>Issue:<br>{}<br><br>Email:<br>{}'.format(
+					e,
+					json.dumps(parent.as_dict(convert_dates_to_str=True), indent=2),
+					json.dumps(email.as_dict(convert_dates_to_str=True), indent=2)
+				),
+				header=[
+					subject,
+					'red',
+				]
+			)
+
+			parent = None
 
 		# NOTE if parent isn't found and there's no subject match, it is likely that it is a new conversation thread and hence is_first = True
 		communication.is_first = True
@@ -673,34 +1020,45 @@ class EmailAccount(Document):
 		return parent
 
 	def find_parent_from_in_reply_to(self, communication, email):
-		"""Returns parent reference if embedded in In-Reply-To header
+		"""
+		Returns parent reference if embedded in In-Reply-To header
+		Message-ID is formatted as `{message_id}@{site}`
+		"""
 
-		Message-ID is formatted as `{message_id}@{site}`"""
 		parent = None
-		in_reply_to = email.mail.get("In-Reply-To") or ""
-		in_reply_to = get_string_between("<", in_reply_to, ">")
+		in_reply_to = email.mail.get('In-Reply-To') or ''
 
 		if in_reply_to:
-			if "@{0}".format(frappe.local.site) in in_reply_to:
+			in_reply_to = get_string_between('<', in_reply_to, '>')
+
+			if '@{0}'.format(frappe.local.site) in in_reply_to:
 				# reply to a communication sent from the system
 				email_queue = frappe.db.get_value(
-					"Email Queue",
-					dict(message_id=in_reply_to),
-					["communication", "reference_doctype", "reference_name"],
+					'Email Queue',
+					{
+						'message_id': in_reply_to,
+					},
+					[
+						'communication',
+						'reference_doctype',
+						'reference_name',
+					]
 				)
+
 				if email_queue:
 					parent_communication, parent_doctype, parent_name = email_queue
+
 					if parent_communication:
 						communication.in_reply_to = parent_communication
 				else:
-					reference, domain = in_reply_to.split("@", 1)
-					parent_doctype, parent_name = "Communication", reference
+					reference, domain = in_reply_to.split('@', 1)
+					parent_doctype, parent_name = 'Communication', reference
 
 				if frappe.db.exists(parent_doctype, parent_name):
 					parent = frappe._dict(doctype=parent_doctype, name=parent_name)
 
 					# set in_reply_to of current communication
-					if parent_doctype == "Communication":
+					if parent_doctype == 'Communication':
 						# communication.in_reply_to = email_queue.communication
 
 						if parent.reference_name:
@@ -708,11 +1066,38 @@ class EmailAccount(Document):
 							parent = frappe.get_doc(parent.reference_doctype, parent.reference_name)
 			else:
 				comm = frappe.db.get_value(
-					"Communication",
-					dict(message_id=in_reply_to, creation=[">=", add_days(get_datetime(), -30)]),
-					["reference_doctype", "reference_name"],
-					as_dict=1,
+					'Communication',
+					{
+						'message_id': in_reply_to,
+						'creation': [
+							'>=',
+							add_days(get_datetime(), -30),
+						],
+					},
+					[
+						'reference_doctype',
+						'reference_name',
+					],
+					as_dict=True
 				)
+
+				if not comm:
+					comm = frappe.db.get_value(
+						'Communication',
+						{
+							'in_reply_to_id': in_reply_to,
+							'creation': [
+								'>=',
+								add_days(get_datetime(), -30),
+							],
+						},
+						[
+							'reference_doctype',
+							'reference_name',
+						],
+						as_dict=True
+					)
+
 				if comm and comm.reference_doctype and comm.reference_name:
 					parent = frappe._dict(doctype=comm.reference_doctype, name=comm.reference_name)
 

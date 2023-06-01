@@ -18,10 +18,10 @@ frappe.ui.form.Toolbar = class Toolbar {
 		this.show_title_as_dirty();
 		this.set_primary_action();
 
-		if(this.frm.meta.hide_toolbar) {
+		if (this.frm.meta.hide_toolbar) {
 			this.page.hide_menu();
 		} else {
-			if(this.frm.doc.__islocal) {
+			if (this.frm.doc.__islocal) {
 				this.page.hide_menu();
 				this.print_icon && this.print_icon.addClass("hide");
 			} else {
@@ -36,7 +36,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 		} else if (this.frm.meta.title_field) {
 			let title_field = (this.frm.doc[this.frm.meta.title_field] || "").toString().trim();
 			var title = strip_html(title_field || this.frm.docname);
-			if(this.frm.doc.__islocal || title === this.frm.docname || this.frm.meta.autoname==="hash") {
+			if (this.frm.doc.__islocal || title === this.frm.docname || this.frm.meta.autoname === "hash") {
 				this.page.set_title_sub("");
 			} else {
 				this.page.set_title_sub(this.frm.docname);
@@ -53,7 +53,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 		var me = this;
 		title = __(title);
 		this.page.set_title(title);
-		if(this.frm.meta.title_field) {
+		if (this.frm.meta.title_field) {
 			frappe.utils.set_title(title + " - " + this.frm.docname);
 		}
 		this.page.$title_area.toggleClass("editable-title",
@@ -84,12 +84,12 @@ frappe.ui.form.Toolbar = class Toolbar {
 			message: __("Unchanged")
 		});
 	}
-	rename_document_title(new_name, new_title, merge=false) {
+	rename_document_title(new_name, new_title, merge = false) {
 		const docname = this.frm.doc.name;
 		const title_field = this.frm.meta.title_field || '';
 		const doctype = this.frm.doctype;
 
-		let confirm_message=null;
+		let confirm_message = null;
 
 		if (new_name) {
 			const warning = __("This cannot be undone");
@@ -130,7 +130,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 			}
 		});
 	}
-	setup_editable_title () {
+	setup_editable_title() {
 		let me = this;
 
 		this.page.$title_area.find(".title-text").on("click", () => {
@@ -193,13 +193,24 @@ frappe.ui.form.Toolbar = class Toolbar {
 	}
 	set_indicator() {
 		var indicator = frappe.get_indicator(this.frm.doc);
-		if (this.frm.save_disabled && indicator && [__('Saved'), __('Not Saved')].includes(indicator[0])) {
+
+		if (this.frm.save_disabled && this.frm.doc.__unsaved) {
 			return;
 		}
-		if(indicator) {
-			this.page.set_indicator(indicator[0], indicator[1]);
-		} else {
+
+		if (!indicator) {
 			this.page.clear_indicator();
+			$(`span.indicator-pill.whitespace-nowrap.orange span:contains(${__('Not Saved')})`)
+				.parent()
+				.remove();
+			return;
+		}
+
+		this.page.set_indicator(indicator[0], indicator[1]);
+
+		if (this.frm.doc.__unsaved && !$(`span.indicator-pill.whitespace-nowrap.orange span:contains(${__('Not Saved')})`).length) {
+			$(this.page.indicator.parent())
+				.append(`<span class="indicator-pill whitespace-nowrap orange"><span>${__('Not Saved')}</span></span>`);
 		}
 	}
 	make_menu() {
@@ -228,7 +239,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 			this.page.add_action_icon("left", () => {
 				this.frm.navigate_records(1);
 			}, 'prev-doc', __("Previous Document"));
-			this.page.add_action_icon("right", ()=> {
+			this.page.add_action_icon("right", () => {
 				this.frm.navigate_records(0);
 			}, 'next-doc', __("Next Document"));
 		}
@@ -245,22 +256,22 @@ frappe.ui.form.Toolbar = class Toolbar {
 		const allow_print_for_draft = cint(print_settings.allow_print_for_draft);
 		const allow_print_for_cancelled = cint(print_settings.allow_print_for_cancelled);
 
-		if (!is_submittable || docstatus == 1  ||
-			(allow_print_for_cancelled && docstatus == 2)||
+		if (!is_submittable || docstatus == 1 ||
+			(allow_print_for_cancelled && docstatus == 2) ||
 			(allow_print_for_draft && docstatus == 0)) {
 			if (frappe.model.can_print(null, me.frm) && !this.frm.meta.issingle) {
-				this.page.add_menu_item(__("Print"), function() {
+				this.page.add_menu_item(__("Print"), function () {
 					me.frm.print_doc();
 				}, true);
-				this.print_icon = this.page.add_action_icon("printer", function() {
+				this.print_icon = this.page.add_action_icon("printer", function () {
 					me.frm.print_doc();
 				}, '', __("Print"));
 			}
 		}
 
 		// email
-		if(frappe.model.can_email(null, me.frm) && me.frm.doc.docstatus < 2) {
-			this.page.add_menu_item(__("Email"), function() {
+		if (frappe.model.can_email(null, me.frm) && me.frm.doc.docstatus < 2) {
+			this.page.add_menu_item(__("Email"), function () {
 				me.frm.email_doc();
 			}, true, {
 				shortcut: 'Ctrl+E',
@@ -269,45 +280,45 @@ frappe.ui.form.Toolbar = class Toolbar {
 		}
 
 		// go to field modal
-		this.page.add_menu_item(__("Jump to field"), function() {
+		this.page.add_menu_item(__("Jump to field"), function () {
 			me.show_jump_to_field_dialog();
 		}, true, 'Ctrl+J');
 
 		// Linked With
-		if(!me.frm.meta.issingle) {
-			this.page.add_menu_item(__('Links'), function() {
+		if (!me.frm.meta.issingle) {
+			this.page.add_menu_item(__('Links'), function () {
 				me.show_linked_with();
 			}, true)
 		}
 
 		// duplicate
-		if(in_list(frappe.boot.user.can_create, me.frm.doctype) && !me.frm.meta.allow_copy) {
-			this.page.add_menu_item(__("Duplicate"), function() {
+		if (in_list(frappe.boot.user.can_create, me.frm.doctype) && !me.frm.meta.allow_copy) {
+			this.page.add_menu_item(__("Duplicate"), function () {
 				me.frm.copy_doc();
 			}, true);
 		}
 
 		// copy doc to clipboard
-		this.page.add_menu_item(__("Copy to Clipboard"), function() {
+		this.page.add_menu_item(__("Copy to Clipboard"), function () {
 			frappe.utils.copy_to_clipboard(JSON.stringify(me.frm.doc));
 		}, true);
 
 		// rename
-		if(this.can_rename()) {
-			this.page.add_menu_item(__("Rename"), function() {
+		if (this.can_rename()) {
+			this.page.add_menu_item(__("Rename"), function () {
 				me.frm.rename_doc();
 			}, true);
 		}
 
 		// reload
-		this.page.add_menu_item(__("Reload"), function() {
+		this.page.add_menu_item(__("Reload"), function () {
 			me.frm.reload_doc();
 		}, true);
 
 		// delete
-		if((cint(me.frm.doc.docstatus) != 1) && !me.frm.doc.__islocal
+		if ((cint(me.frm.doc.docstatus) != 1) && !me.frm.doc.__islocal
 			&& frappe.model.can_delete(me.frm.doctype)) {
-			this.page.add_menu_item(__("Delete"), function() {
+			this.page.add_menu_item(__("Delete"), function () {
 				me.frm.savetrash();
 			}, true, {
 				shortcut: 'Shift+Ctrl+D',
@@ -318,15 +329,15 @@ frappe.ui.form.Toolbar = class Toolbar {
 		this.make_customize_buttons();
 
 		// Auto Repeat
-		if(this.can_repeat()) {
-			this.page.add_menu_item(__("Repeat"), function(){
+		if (this.can_repeat()) {
+			this.page.add_menu_item(__("Repeat"), function () {
 				frappe.utils.new_auto_repeat_prompt(me.frm);
 			}, true);
 		}
 
 		// New
-		if(p[CREATE] && !this.frm.meta.issingle) {
-			this.page.add_menu_item(__("New {0}", [__(me.frm.doctype)]), function() {
+		if (p[CREATE] && !this.frm.meta.issingle) {
+			this.page.add_menu_item(__("New {0}", [__(me.frm.doctype)]), function () {
 				frappe.new_doc(me.frm.doctype, true);
 			}, true, {
 				shortcut: 'Ctrl+B',
@@ -353,7 +364,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 				}, true);
 			}
 
-			if (frappe.boot.developer_mode===1 && !is_doctype_form) {
+			if (frappe.boot.developer_mode === 1 && !is_doctype_form) {
 				// edit doctype
 				this.page.add_menu_item(__("Edit DocType"), () => {
 					frappe.set_route('Form', 'DocType', this.frm.doctype);
@@ -369,41 +380,41 @@ frappe.ui.form.Toolbar = class Toolbar {
 			&& !this.frm.doc.auto_repeat;
 	}
 	can_save() {
-		return this.get_docstatus()===0;
+		return this.get_docstatus() === 0;
 	}
 	can_submit() {
-		return this.get_docstatus()===0
+		return this.get_docstatus() === 0
 			&& !this.frm.doc.__islocal
 			&& !this.frm.doc.__unsaved
 			&& this.frm.perm[0].submit
 			&& !this.has_workflow();
 	}
 	can_update() {
-		return this.get_docstatus()===1
+		return this.get_docstatus() === 1
 			&& !this.frm.doc.__islocal
 			&& this.frm.perm[0].submit
 			&& this.frm.doc.__unsaved;
 	}
 	can_cancel() {
-		return this.get_docstatus()===1
+		return this.get_docstatus() === 1
 			&& this.frm.perm[0].cancel
 			&& !this.read_only;
 	}
 	can_amend() {
-		return this.get_docstatus()===2
+		return this.get_docstatus() === 2
 			&& this.frm.perm[0].amend
 			&& !this.read_only;
 	}
 	has_workflow() {
-		if(this._has_workflow === undefined)
-			this._has_workflow = frappe.get_list("Workflow", {document_type: this.frm.doctype}).length;
+		if (this._has_workflow === undefined)
+			this._has_workflow = frappe.get_list("Workflow", { document_type: this.frm.doctype }).length;
 		return this._has_workflow;
 	}
 	get_docstatus() {
 		return cint(this.frm.doc.docstatus);
 	}
 	show_linked_with() {
-		if(!this.frm.linked_with) {
+		if (!this.frm.linked_with) {
 			this.frm.linked_with = new frappe.ui.form.LinkedWith({
 				frm: this.frm
 			});
@@ -444,7 +455,7 @@ frappe.ui.form.Toolbar = class Toolbar {
 	}
 	get_action_status() {
 		var status = null;
-		if (this.frm.page.current_view_name==='print' || this.frm.hidden) {
+		if (this.frm.page.current_view_name === 'print' || this.frm.hidden) {
 			status = "Edit";
 		} else if (this.can_submit()) {
 			status = "Submit";
@@ -468,20 +479,20 @@ frappe.ui.form.Toolbar = class Toolbar {
 		var me = this;
 		this.page.clear_actions();
 
-		if(status!== 'Edit') {
+		if (status !== 'Edit') {
 			var perm_to_check = this.frm.action_perm_type_map[status];
-			if(!this.frm.perm[0][perm_to_check]) {
+			if (!this.frm.perm[0][perm_to_check]) {
 				return;
 			}
 		}
 
-		if(status === "Edit") {
-			this.page.set_primary_action(__("Edit"), function() {
+		if (status === "Edit") {
+			this.page.set_primary_action(__("Edit"), function () {
 				me.frm.page.set_view('main');
 			}, 'edit');
-		} else if(status === "Cancel") {
+		} else if (status === "Cancel") {
 			let add_cancel_button = () => {
-				this.page.set_secondary_action(__(status), function() {
+				this.page.set_secondary_action(__(status), function () {
 					me.frm.savecancel(this);
 				});
 			};
@@ -498,16 +509,16 @@ frappe.ui.form.Toolbar = class Toolbar {
 			}
 		} else {
 			var click = {
-				"Save": function() {
+				"Save": function () {
 					return me.frm.save('Save', null, this);
 				},
-				"Submit": function() {
+				"Submit": function () {
 					return me.frm.savesubmit(this);
 				},
-				"Update": function() {
+				"Update": function () {
 					return me.frm.save('Update', null, this);
 				},
-				"Amend": function() {
+				"Amend": function () {
 					return me.frm.amend_doc();
 				}
 			}[status];
@@ -523,14 +534,14 @@ frappe.ui.form.Toolbar = class Toolbar {
 	}
 	add_update_button_on_dirty() {
 		var me = this;
-		$(this.frm.wrapper).on("dirty", function() {
+		$(this.frm.wrapper).on("dirty", function () {
 			me.show_title_as_dirty();
 
 			// clear workflow actions
 			me.frm.page.clear_actions_menu();
 
 			// enable save action
-			if(!me.frm.save_disabled) {
+			if (!me.frm.save_disabled) {
 				me.set_primary_action(true);
 			}
 		});
@@ -539,8 +550,15 @@ frappe.ui.form.Toolbar = class Toolbar {
 		if (this.frm.save_disabled && !this.frm.set_dirty)
 			return;
 
-		if (this.frm.is_dirty()) {
-			this.page.set_indicator(__("Not Saved"), "orange");
+		if (this.frm.is_dirty() && !$(`span.indicator-pill.whitespace-nowrap.orange span:contains(${__('Not Saved')})`).length) {
+			$(this.page.indicator.parent())
+				.append(`<span class="indicator-pill whitespace-nowrap orange"><span>${__('Not Saved')}</span></span>`);
+		}
+
+		if (!this.frm.is_dirty() && $(`span.indicator-pill.whitespace-nowrap.orange span:contains(${__('Not Saved')})`).length) {
+			$(`span.indicator-pill.whitespace-nowrap.orange span:contains(${__('Not Saved')})`)
+				.parent()
+				.remove();
 		}
 
 		$(this.frm.wrapper).attr("data-state", this.frm.is_dirty() ? "dirty" : "clean");

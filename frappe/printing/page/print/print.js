@@ -704,7 +704,7 @@ frappe.ui.form.PrintView = class {
 		const route = frappe.get_route();
 		const doc = frappe.get_doc(route[1], route.slice(2).join("/"));
 
-		if (doc.doctype === 'Sales Order' && doc.workflow_order === 'Consuntivo') {
+		if (doc.doctype === 'Sales Order' && doc.workflow_order === 'Consuntivo' && this.print_sel.val() === (this.frm.meta.default_print_format || 'Standard')) {
 			this.print_sel.val('Consuntivo');
 		}
 

@@ -58,7 +58,7 @@ class FormTimeline extends BaseTimeline {
 						</nav>
 					</div>
 				</div>
-			`).find('a').on('click', function(e) {
+			`).find('a').on('click', function (e) {
 				e.preventDefault();
 				me.only_communication = $(this).data().onlyCommunication;
 				me.render_timeline_items();
@@ -192,8 +192,8 @@ class FormTimeline extends BaseTimeline {
 
 	get_communication_timeline_contents() {
 		let communication_timeline_contents = [];
-		let icon_set = {Email: "mail", Phone: "call", Meeting: "calendar", Other: "dot-horizontal"};
-		(this.doc_info.communications|| []).forEach(communication => {
+		let icon_set = { Email: "mail", Phone: "call", Meeting: "calendar", Other: "dot-horizontal" };
+		(this.doc_info.communications || []).forEach(communication => {
 			let medium = communication.communication_medium;
 			communication_timeline_contents.push({
 				icon: icon_set[medium],
@@ -208,7 +208,7 @@ class FormTimeline extends BaseTimeline {
 		return communication_timeline_contents;
 	}
 
-	get_communication_timeline_content(doc, allow_reply=true) {
+	get_communication_timeline_content(doc, allow_reply = true) {
 		doc._url = frappe.utils.get_form_link("Communication", doc.name);
 		this.set_communication_doc_status(doc);
 		if (doc.attachments && typeof doc.attachments === "string") {
@@ -241,7 +241,7 @@ class FormTimeline extends BaseTimeline {
 
 	get_auto_messages_timeline_contents() {
 		let auto_messages_timeline_contents = [];
-		(this.doc_info.automated_messages|| []).forEach(message => {
+		(this.doc_info.automated_messages || []).forEach(message => {
 			auto_messages_timeline_contents.push({
 				icon: 'notification',
 				icon_size: 'sm',
@@ -403,7 +403,7 @@ class FormTimeline extends BaseTimeline {
 		let energy_point_timeline_contents = [];
 		(this.doc_info.energy_point_logs || []).forEach(log => {
 			let timeline_badge = `
-			<div class="timeline-badge ${log.points > 0 ? 'appreciation': 'criticism'} bold">
+			<div class="timeline-badge ${log.points > 0 ? 'appreciation' : 'criticism'} bold">
 				${log.points}
 			</div>`;
 
@@ -428,7 +428,7 @@ class FormTimeline extends BaseTimeline {
 		actions.append(reply_all);
 	}
 
-	compose_mail(communication_doc=null, reply_all=false) {
+	compose_mail(communication_doc = null, reply_all = false) {
 		const args = {
 			doc: this.frm.doc,
 			frm: this.frm,
@@ -436,7 +436,13 @@ class FormTimeline extends BaseTimeline {
 			is_a_reply: Boolean(communication_doc),
 			title: communication_doc ? __('Reply') : null,
 			last_email: communication_doc,
-			subject: communication_doc ? __('{0} (#{1})', [communication_doc.subject, communication_doc.reference_name]) : ''
+			subject: communication_doc ?
+				(
+					communication_doc.subject.includes(__('(#{0})', [communication_doc.reference_name]))
+						? __('{0}', [communication_doc.subject])
+						: __('{0} (#{1})', [communication_doc.subject, communication_doc.reference_name])
+				)
+				: ''
 		};
 
 		if (communication_doc && reply_all) {

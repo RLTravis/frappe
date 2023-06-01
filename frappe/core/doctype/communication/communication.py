@@ -552,7 +552,8 @@ def update_parent_document_on_communication(doc):
 
 		# if status has a "Replied" option, then update the status for received communication
 		if ("Replied" in options) and doc.sent_or_received == "Received":
-			parent.db_set("status", "Open")
+			if parent.status != 'Closed' or not frappe.as_unicode(doc.subject).startswith('Resolved in '):
+				parent.db_set("status", "Open")
 			parent.run_method("handle_hold_time", "Replied")
 			apply_assignment_rule(parent)
 
