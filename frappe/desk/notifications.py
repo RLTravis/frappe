@@ -284,7 +284,7 @@ def get_open_count(doctype, name, items=None):
 		total = len(
 			frappe.get_all(
 				d, fields="name", filters={fieldname: name}, limit=100, distinct=True, ignore_ifnull=True
-			)
+			) or []
 		)
 		data["count"] = total
 		out.append(data)

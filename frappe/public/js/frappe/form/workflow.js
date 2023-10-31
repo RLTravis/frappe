@@ -93,7 +93,7 @@ frappe.ui.form.States = Class.extend({
 						me.frm.script_manager.trigger('before_workflow_action').then(() => {
 							frappe.dom.freeze();
 							frappe.xcall('frappe.model.workflow.apply_workflow',
-								{doc: me.frm.doc, action: d.action})
+								{doc: me.frm.doc, action: me.frm.selected_workflow_action})
 								.then((doc) => {
 									frappe.model.sync(doc);
 									me.frm.refresh();

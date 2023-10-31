@@ -5,7 +5,7 @@
 
 from datetime import datetime, timedelta
 from urllib.parse import quote
-
+import re
 import google.oauth2.credentials
 import requests
 from dateutil import parser
@@ -246,7 +246,7 @@ def sync_events_from_google_calendar(g_calendar, method=None):
 	"""
 	google_calendar, account = get_google_calendar_object(g_calendar)
 
-	if not account.pull_from_google_calendar:
+	if not account.enable or not account.pull_from_google_calendar:
 		return
 
 	sync_token = account.get_password(fieldname="next_sync_token", raise_exception=False) or None
@@ -337,6 +337,8 @@ def sync_events_from_google_calendar(g_calendar, method=None):
 		else:
 			pass
 
+	frappe.db.commit()
+
 	if not results:
 		return _("No Google Calendar Event to sync.")
 	elif len(results) == 1:
@@ -345,35 +347,91 @@ def sync_events_from_google_calendar(g_calendar, method=None):
 		return _("{0} Google Calendar Events synced.").format(len(results))
 
 
+def get_event_participants(row):
+	# Example of row object
+	# {
+	# 	'email': '',
+	# 	'responseStatus': '',
+	# }
+
+	res = frappe.db.sql(
+		"""
+		SELECT `name`
+		FROM `tabEmployee`
+		WHERE `user_id` = {}
+		""".format(frappe.db.escape(row['email'])),
+		as_dict=True
+	)
+
+	if res:
+		return {
+			'doctype': 'Event Participants',
+			'reference_doctype': 'Employee',
+			'reference_docname': res[0]['name'],
+		}
+
+	return {}
+
 def insert_event_to_calendar(account, event, recurrence=None):
 	"""
 	Inserts event in Frappe Calendar during Sync
 	"""
+	participants = [get_event_participants(row) for row in event.get("attendees", [])]
+
 	calendar_event = {
 		"doctype": "Event",
-		"subject": event.get("summary"),
+		"subject": event.get("summary", 'OGGETTO DA DEFINIRE'),
 		"description": event.get("description"),
+		"address": re.sub(r'^https?\:\/\/.+\/place\/([^\/]+)\/.+$', r'\1', event.get("location", '')).replace('+', ' ')[:140] or None,
+		"event_type": 'Private',
 		"google_calendar_event": 1,
 		"google_calendar": account.name,
 		"google_calendar_id": account.google_calendar_id,
 		"google_calendar_event_id": event.get("id"),
 		"pulled_from_google_calendar": 1,
+		"sync_with_google_calendar": 1,
+		"send_reminder": 0,
+		'color': frappe.db.get_value('Google Calendar', account.name, 'color'),
 	}
 	calendar_event.update(
 		google_calendar_to_repeat_on(
 			recurrence=recurrence, start=event.get("start"), end=event.get("end")
 		)
 	)
-	frappe.get_doc(calendar_event).insert(ignore_permissions=True)
+
+	doc = frappe.get_doc(calendar_event)
+	doc.event_participants = []
+
+	for participant in participants:
+		if not participant:
+			continue
+
+		doc.append('event_participants', participant)
+
+	doc.insert(ignore_permissions=True)
 
 
 def update_event_in_calendar(account, event, recurrence=None):
 	"""
 	Updates Event in Frappe Calendar if any existing Google Calendar Event is updated
 	"""
+	participants = [get_event_participants(row) for row in event.get("attendees", [])]
 	calendar_event = frappe.get_doc("Event", {"google_calendar_event_id": event.get("id")})
-	calendar_event.subject = event.get("summary")
+	calendar_event.subject = event.get("summary", 'OGGETTO DA DEFINIRE')
 	calendar_event.description = event.get("description")
+	calendar_event.address = re.sub(r'^https?\:\/\/.+\/place\/([^\/]+)\/.+$', r'\1', event.get("location", '')).replace('+', ' ')[:140] or None
+	calendar_event.event_type = 'Private'
+	calendar_event.sync_with_google_calendar = 1
+	calendar_event.color = frappe.db.get_value('Google Calendar', account.name, 'color')
+	calendar_event.send_reminder = 0
+	calendar_event.event_participants = []
+
+	for participant in participants:
+		if not participant:
+			continue
+
+		calendar_event.append('event_participants', participant)
+
 	calendar_event.update(
 		google_calendar_to_repeat_on(
 			recurrence=recurrence, start=event.get("start"), end=event.get("end")
@@ -395,10 +453,10 @@ def insert_event_in_google_calendar(doc, method=None):
 
 	google_calendar, account = get_google_calendar_object(doc.google_calendar)
 
-	if not account.push_to_google_calendar:
+	if not account.enable or not account.push_to_google_calendar:
 		return
 
-	event = {"summary": doc.subject, "description": doc.description, "google_calendar_event": 1}
+	event = {"summary": doc.subject, "description": doc.description, "location": doc.address, "google_calendar_event": 1}
 	event.update(
 		format_date_according_to_google_calendar(
 			doc.all_day, get_datetime(doc.starts_on), get_datetime(doc.ends_on)
@@ -407,6 +465,21 @@ def insert_event_in_google_calendar(doc, method=None):
 
 	if doc.repeat_on:
 		event.update({"recurrence": repeat_on_to_google_calendar_recurrence_rule(doc)})
+
+	if doc.get('event_participants', []):
+		event.update(
+			{
+				'attendees': [{
+					'email': frappe.db.get_value(
+						participant.reference_doctype,
+						participant.reference_docname,
+						'user_id' if participant.reference_doctype == 'Employee' else 'email_id'
+					),
+					'responseStatus': 'needsAction',
+				}
+									for participant in doc.event_participants],
+			}
+		)
 
 	try:
 		event = google_calendar.events().insert(calendarId=doc.google_calendar_id, body=event).execute()
@@ -442,9 +515,6 @@ def update_event_in_google_calendar(doc, method=None):
 
 	google_calendar, account = get_google_calendar_object(doc.google_calendar)
 
-	if not account.push_to_google_calendar:
-		return
-
 	try:
 		event = (
 			google_calendar.events()
@@ -453,10 +523,27 @@ def update_event_in_google_calendar(doc, method=None):
 		)
 		event["summary"] = doc.subject
 		event["description"] = doc.description
+		event["location"] = doc.address
 		event["recurrence"] = repeat_on_to_google_calendar_recurrence_rule(doc)
 		event["status"] = (
 			"cancelled" if doc.event_type == "Cancelled" or doc.status == "Closed" else event.get("status")
 		)
+
+		if doc.get('event_participants', []):
+			event.update(
+				{
+					'attendees': [{
+						'email': frappe.db.get_value(
+							participant.reference_doctype,
+							participant.reference_docname,
+							'user_id' if participant.reference_doctype == 'Employee' else 'email_id'
+						),
+						'responseStatus': 'needsAction',
+					}
+										for participant in doc.event_participants],
+				}
+			)
+
 		event.update(
 			format_date_according_to_google_calendar(
 				doc.all_day, get_datetime(doc.starts_on), get_datetime(doc.ends_on)
@@ -468,10 +555,21 @@ def update_event_in_google_calendar(doc, method=None):
 		).execute()
 		frappe.msgprint(_("Event Synced with Google Calendar."))
 	except HttpError as err:
-		frappe.throw(
-			_("Google Calendar - Could not update Event {0} in Google Calendar, error code {1}.").format(
-				doc.name, err.resp.status
-			)
+		import socket
+
+		hostname = socket.gethostname()
+
+		frappe.sendmail(
+			recipients=[
+				'test-dev@erre-elle.net',
+			],
+			cc=[],
+			sender='tidy@erre-elle.net',
+			subject=_(f'Problem in sync with Google Calendar.'),
+			template='base',
+			args={
+				'message': _(f'Google Calendar - Could not update Event {doc.name} in Google Calendar, error code {err.resp.status}.'),
+			}
 		)
 
 
@@ -485,20 +583,12 @@ def delete_event_from_google_calendar(doc, method=None):
 
 	google_calendar, account = get_google_calendar_object(doc.google_calendar)
 
-	if not account.push_to_google_calendar:
+	if not account.enable or not account.push_to_google_calendar:
 		return
 
 	try:
-		event = (
-			google_calendar.events()
-			.get(calendarId=doc.google_calendar_id, eventId=doc.google_calendar_event_id)
-			.execute()
-		)
-		event["recurrence"] = None
-		event["status"] = "cancelled"
-
-		google_calendar.events().update(
-			calendarId=doc.google_calendar_id, eventId=doc.google_calendar_event_id, body=event
+		google_calendar.events().delete(
+			calendarId=doc.google_calendar_id, eventId=doc.google_calendar_event_id, sendUpdates='all'
 		).execute()
 	except HttpError as err:
 		frappe.msgprint(
@@ -515,13 +605,14 @@ def google_calendar_to_repeat_on(start, end, recurrence=None):
 
 	Both have been mapped in a dict for easier mapping.
 	"""
+	import pytz
 	repeat_on = {
 		"starts_on": get_datetime(start.get("date"))
 		if start.get("date")
-		else parser.parse(start.get("dateTime")).astimezone().replace(tzinfo=None),
+		else parser.parse(start.get("dateTime")).astimezone(pytz.timezone(start.get("timeZone"))).strftime('%Y-%m-%d %H:%M:%S'),
 		"ends_on": get_datetime(end.get("date"))
 		if end.get("date")
-		else parser.parse(end.get("dateTime")).astimezone().replace(tzinfo=None),
+		else parser.parse(end.get("dateTime")).astimezone(pytz.timezone(end.get("timeZone"))).strftime('%Y-%m-%d %H:%M:%S'),
 		"all_day": 1 if start.get("date") else 0,
 		"repeat_this_event": 1 if recurrence else 0,
 		"repeat_on": None,
@@ -541,12 +632,28 @@ def google_calendar_to_repeat_on(start, end, recurrence=None):
 		google_calendar_frequency, until, byday = get_recurrence_parameters(recurrence)
 		repeat_on["repeat_on"] = google_calendar_frequencies.get(google_calendar_frequency)
 
+		if until and until.startswith('UNTIL='):
+			until = until.replace('UNTIL=', '')
+
 		if repeat_on["repeat_on"] == "Daily":
 			repeat_on["ends_on"] = None
-			repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d") if until else None
+			repeat_on["repeat_till"] = None
+
+			if until:
+				if re.match(r'^[0-9]{8}$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d")
+				elif re.match(r'^[0-9]{8}T[0-9]{8}Z$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%dT%H%M%SZ")
 
 		if byday and repeat_on["repeat_on"] == "Weekly":
-			repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d") if until else None
+			repeat_on["repeat_till"] = None
+
+			if until:
+				if re.match(r'^[0-9]{8}$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d")
+				elif re.match(r'^[0-9]{8}T[0-9]{8}Z$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%dT%H%M%SZ")
+
 			byday = byday.split("=")[1].split(",")
 			for repeat_day in byday:
 				repeat_on[google_calendar_days[repeat_day]] = 1
@@ -569,11 +676,23 @@ def google_calendar_to_repeat_on(start, end, recurrence=None):
 			start_date = parse_google_calendar_recurrence_rule(int(repeat_day_week_number), repeat_day_name)
 			repeat_on["starts_on"] = start_date
 			repeat_on["ends_on"] = add_to_date(start_date, minutes=5)
-			repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d") if until else None
+			repeat_on["repeat_till"] = None
+
+			if until:
+				if re.match(r'^[0-9]{8}$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d")
+				elif re.match(r'^[0-9]{8}T[0-9]{8}Z$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%dT%H%M%SZ")
 
 		if repeat_on["repeat_till"] == "Yearly":
 			repeat_on["ends_on"] = None
-			repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d") if until else None
+			repeat_on["repeat_till"] = None
+
+			if until:
+				if re.match(r'^[0-9]{8}$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%d")
+				elif re.match(r'^[0-9]{8}T[0-9]{8}Z$', until):
+					repeat_on["repeat_till"] = datetime.strptime(until, "%Y%m%dT%H%M%SZ")
 
 	return repeat_on
 

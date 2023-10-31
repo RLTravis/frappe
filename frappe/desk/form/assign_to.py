@@ -39,7 +39,7 @@ def get(args=None):
 
 
 @frappe.whitelist()
-def add(args=None):
+def add(args=None, skip_notify=False):
 	"""add in someone's to do list
 	args = {
 	        "assign_to": [],
@@ -109,14 +109,15 @@ def add(args=None):
 			follow_document(args["doctype"], args["name"], assign_to)
 
 			# notify
-			notify_assignment(
-				d.assigned_by,
-				d.owner,
-				d.reference_type,
-				d.reference_name,
-				action="ASSIGN",
-				description=args.get("description"),
-			)
+			if not skip_notify:
+				notify_assignment(
+					d.assigned_by,
+					d.owner,
+					d.reference_type,
+					d.reference_name,
+					action="ASSIGN",
+					description=args.get("description"),
+				)
 
 	if shared_with_users:
 		user_list = format_message_for_assign_to(shared_with_users)

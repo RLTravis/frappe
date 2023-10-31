@@ -66,6 +66,9 @@ class ToDo(Document):
 		frappe.get_doc(self.reference_type, self.reference_name).add_comment(comment_type, text)
 
 	def update_in_reference(self):
+		def is_virtual_doctype(doctype):
+			return frappe.db.get_value("DocType", doctype, "is_virtual")
+
 		if not (self.reference_type and self.reference_name):
 			return
 
@@ -86,13 +89,24 @@ class ToDo(Document):
 			]
 
 			assignments.reverse()
-			frappe.db.set_value(
-				self.reference_type,
-				self.reference_name,
-				"_assign",
-				json.dumps(assignments),
-				update_modified=False,
-			)
+			if is_virtual_doctype(self.reference_type):
+				from frappe.model.base_document import get_controller
+
+				controller = get_controller(self.reference_type)
+				controller.set_value(
+					self.reference_name,
+					"_assign",
+					json.dumps(assignments),
+					update_modified=False,
+				)
+			else:
+				frappe.db.set_value(
+					self.reference_type,
+					self.reference_name,
+					"_assign",
+					json.dumps(assignments),
+					update_modified=False,
+				)
 
 		except Exception as e:
 			if frappe.db.is_table_missing(e) and frappe.flags.in_install:

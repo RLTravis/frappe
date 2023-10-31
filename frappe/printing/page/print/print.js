@@ -1,4 +1,4 @@
-frappe.pages['print'].on_page_load = function(wrapper) {
+frappe.pages['print'].on_page_load = function (wrapper) {
 	frappe.ui.make_app_page({
 		parent: wrapper,
 	});
@@ -133,6 +133,7 @@ frappe.ui.form.PrintView = class {
 			},
 		);
 		this.letterhead_selector = this.letterhead_selector_df.$input;
+
 		this.sidebar_dynamic_section = $(
 			`<div class="dynamic-settings"></div>`
 		).appendTo(this.sidebar);
@@ -349,7 +350,7 @@ frappe.ui.form.PrintView = class {
 
 		return frappe.db
 			.get_list('Letter Head', {
-				filters: {'disabled': 0},
+				filters: { 'disabled': 0 },
 				fields: ['name', 'is_default'],
 				limit: 0
 			})
@@ -417,7 +418,7 @@ frappe.ui.form.PrintView = class {
 		this.print_wrapper.find('.print-format-skeleton').remove();
 		let base_url = frappe.urllib.get_base_url();
 		let print_css_url = `${base_url}/assets/${frappe.utils.is_rtl(this.lang_code) ? 'css-rtl' : 'css'}/printview.css`;
-		this.$print_format_body.find('html').attr('dir', frappe.utils.is_rtl(this.lang_code) ? 'rtl': 'ltr');
+		this.$print_format_body.find('html').attr('dir', frappe.utils.is_rtl(this.lang_code) ? 'rtl' : 'ltr');
 		this.$print_format_body.find('html').attr('lang', this.lang_code);
 		this.$print_format_body.find('head').html(
 			`<style type="text/css">${out.style}</style>
@@ -490,10 +491,10 @@ frappe.ui.form.PrintView = class {
 		} else if (me.get_mapped_printer().length === 1) {
 			// printer is already mapped in localstorage (applies for both raw and pdf )
 			if (me.is_raw_printing()) {
-				me.get_raw_commands(function(out) {
+				me.get_raw_commands(function (out) {
 					frappe.ui.form
 						.qz_connect()
-						.then(function() {
+						.then(function () {
 							let printer_map = me.get_mapped_printer()[0];
 							let data = [out.raw_commands];
 							let config = qz.configs.create(printer_map.printer);
@@ -548,14 +549,14 @@ frappe.ui.form.PrintView = class {
 					no_letterhead: me.with_letterhead(),
 					letterhead: me.get_letterhead(),
 				},
-				callback: function() {},
+				callback: function () { },
 			});
 		}
 	}
 	network_printer_setting_dialog(callback) {
 		frappe.call({
 			method: 'frappe.printing.doctype.network_printer_settings.network_printer_settings.get_network_printer_settings',
-			callback: function(r) {
+			callback: function (r) {
 				if (r.message) {
 					let d = new frappe.ui.Dialog({
 						title: __('Select Network Printer'),
@@ -568,7 +569,7 @@ frappe.ui.form.PrintView = class {
 								"options": r.message
 							}
 						],
-						primary_action: function() {
+						primary_action: function () {
 							localStorage.setItem('network_printer', d.get_values().printer);
 							if (typeof callback == "function") {
 								callback();
@@ -586,20 +587,20 @@ frappe.ui.form.PrintView = class {
 		let w = window.open(
 			frappe.urllib.get_full_url(
 				method +
-					'doctype=' +
-					encodeURIComponent(this.frm.doc.doctype) +
-					'&name=' +
-					encodeURIComponent(this.frm.doc.name) +
-					(printit ? '&trigger_print=1' : '') +
-					'&format=' +
-					encodeURIComponent(this.selected_format()) +
-					'&no_letterhead=' +
-					(this.with_letterhead() ? '0' : '1') +
-					'&letterhead=' +
-					encodeURIComponent(this.get_letterhead()) +
-					'&settings=' +
-					encodeURIComponent(JSON.stringify(this.additional_settings)) +
-					(this.lang_code ? '&_lang=' + this.lang_code : '')
+				'doctype=' +
+				encodeURIComponent(this.frm.doc.doctype) +
+				'&name=' +
+				encodeURIComponent(this.frm.doc.name) +
+				(printit ? '&trigger_print=1' : '') +
+				'&format=' +
+				encodeURIComponent(this.selected_format()) +
+				'&no_letterhead=' +
+				(this.with_letterhead() ? '0' : '1') +
+				'&letterhead=' +
+				encodeURIComponent(this.get_letterhead()) +
+				'&settings=' +
+				encodeURIComponent(JSON.stringify(this.additional_settings)) +
+				(this.lang_code ? '&_lang=' + this.lang_code : '')
 			)
 		);
 		if (!w) {
@@ -629,7 +630,7 @@ frappe.ui.form.PrintView = class {
 				settings: this.additional_settings,
 				_lang: this.lang_code,
 			},
-			callback: function(r) {
+			callback: function (r) {
 				if (!r.exc) {
 					callback(r.message);
 				}
@@ -656,7 +657,7 @@ frappe.ui.form.PrintView = class {
 				print_format: this.selected_format(),
 				_lang: this.lang_code,
 			},
-			callback: function(r) {
+			callback: function (r) {
 				if (!r.exc) {
 					callback(r.message);
 				}
@@ -700,6 +701,13 @@ frappe.ui.form.PrintView = class {
 	}
 
 	selected_format() {
+		const route = frappe.get_route();
+		const doc = frappe.get_doc(route[1], route.slice(2).join("/"));
+
+		if (doc.doctype === 'Sales Order' && doc.workflow_order === 'Consuntivo' && this.print_sel.val() === (this.frm.meta.default_print_format || 'Standard')) {
+			this.print_sel.val('Consuntivo');
+		}
+
 		return (
 			this.print_sel.val() || this.frm.meta.default_print_format || 'Standard'
 		);

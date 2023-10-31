@@ -768,11 +768,17 @@ def run_parallel_tests(
 @click.command("run-ui-tests")
 @click.argument("app")
 @click.option("--headless", is_flag=True, help="Run UI Test in headless mode")
+@click.option("--browser", help="Run UI Test with a specific browser")
 @click.option("--parallel", is_flag=True, help="Run UI Test in parallel mode")
+@click.option("--record-key", help="The key to recording")
+@click.option("--test", multiple=True, help="Specific test")
 @click.option("--ci-build-id")
 @pass_context
-def run_ui_tests(context, app, headless=False, parallel=True, ci_build_id=None):
+def run_ui_tests(context, app, headless=False, browser='chrome', record_key=None, parallel=True, ci_build_id=None, test=()):
 	"Run UI tests"
+
+	tests = test
+
 	site = get_site(context)
 	app_base_path = os.path.abspath(os.path.join(frappe.get_app_path(app), ".."))
 	site_url = frappe.utils.get_site_url(site)
@@ -803,10 +809,10 @@ def run_ui_tests(context, app, headless=False, parallel=True, ci_build_id=None):
 		)
 
 	# run for headless mode
-	run_or_open = "run --browser chrome --record" if headless else "open"
-	command = "{site_env} {password_env} {cypress} {run_or_open}"
+	run_or_open = f"run --browser {browser}" if headless else "open"
+	command = "{site_env} {password_env} {cypress} {run_or_open}{record_key}"
 	formatted_command = command.format(
-		site_env=site_env, password_env=password_env, cypress=cypress_path, run_or_open=run_or_open
+		site_env=site_env, password_env=password_env, cypress=cypress_path, run_or_open=run_or_open, record_key=f' --record --key {record_key}' if headless and record_key else ''
 	)
 
 	if parallel:
@@ -814,6 +820,9 @@ def run_ui_tests(context, app, headless=False, parallel=True, ci_build_id=None):
 
 	if ci_build_id:
 		formatted_command += f" --ci-build-id {ci_build_id}"
+
+	if tests:
+		formatted_command += f" --spec \"{','.join(tests)}\""
 
 	click.secho("Running Cypress...", fg="yellow")
 	frappe.commands.popen(formatted_command, cwd=app_base_path, raise_err=True)

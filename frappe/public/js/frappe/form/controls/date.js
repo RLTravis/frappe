@@ -1,15 +1,15 @@
 frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 	trigger_change_on_input_event: false,
-	make_input: function() {
+	make_input: function () {
 		this._super();
 		this.make_picker();
 	},
-	make_picker: function() {
+	make_picker: function () {
 		this.set_date_options();
 		this.set_datepicker();
 		this.set_t_for_today();
 	},
-	set_formatted_input: function(value) {
+	set_formatted_input: function (value) {
 		this._super(value);
 		if (this.timepicker_only) return;
 		if (!this.datepicker) return;
@@ -23,7 +23,7 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 		let should_refresh = this.last_value && this.last_value !== value;
 
 		if (!should_refresh) {
-			if(this.datepicker.selectedDates.length > 0) {
+			if (this.datepicker.selectedDates.length > 0) {
 				// if date is selected but different from value, refresh
 				const selected_date =
 					moment(this.datepicker.selectedDates[0])
@@ -36,17 +36,17 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 			}
 		}
 
-		if(should_refresh) {
+		if (should_refresh) {
 			this.datepicker.selectDate(frappe.datetime.str_to_obj(value));
 		}
 	},
-	set_date_options: function() {
+	set_date_options: function () {
 		// webformTODO:
 		let sysdefaults = frappe.boot.sysdefaults;
 
 		let lang = 'en';
 		frappe.boot.user && (lang = frappe.boot.user.language);
-		if(!$.fn.datepicker.language[lang]) {
+		if (!$.fn.datepicker.language[lang]) {
 			lang = 'en';
 		}
 
@@ -56,11 +56,13 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 		let now_date = new Date();
 
 		this.today_text = __("Today");
+		this.clear_text = __("Svuota");
 		this.date_format = frappe.defaultDateFormat;
 		this.datepicker_options = {
 			language: lang,
 			autoClose: true,
 			todayButton: true,
+			clearButton: true,
 			dateFormat: date_format,
 			startDate: now_date,
 			keyboardNav: false,
@@ -70,14 +72,18 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 			},
 			onShow: () => {
 				this.datepicker.$datepicker
-					.find('.datepicker--button:visible')
+					.find('span[data-action="today"]:visible')
 					.text(this.today_text);
+
+				this.datepicker.$datepicker
+					.find('span[data-action="clear"]:visible')
+					.text(this.clear_text);
 
 				this.update_datepicker_position();
 			}
 		};
 	},
-	set_datepicker: function() {
+	set_datepicker: function () {
 		this.$input.datepicker(this.datepicker_options);
 		this.datepicker = this.$input.data('datepicker');
 
@@ -89,8 +95,8 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 				this.datepicker.selectDate(this.get_now_date());
 			});
 	},
-	update_datepicker_position: function() {
-		if(!this.frm) return;
+	update_datepicker_position: function () {
+		if (!this.frm) return;
 		// show datepicker above or below the input
 		// based on scroll position
 		// We have to bodge around the timepicker getting its position
@@ -112,37 +118,39 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 
 		this.datepicker.update('position', position);
 	},
-	get_now_date: function() {
+	get_now_date: function () {
 		return frappe.datetime.now_date(true);
 	},
-	set_t_for_today: function() {
+	set_t_for_today: function () {
 		var me = this;
-		this.$input.on("keydown", function(e) {
-			if(e.which===84) { // 84 === t
-				if(me.df.fieldtype=='Date') {
+		this.$input.on("keydown", function (e) {
+			if (e.which === 84) { // 84 === t
+				if (me.df.fieldtype == 'Date') {
 					me.set_value(frappe.datetime.nowdate());
-				} if(me.df.fieldtype=='Datetime') {
+				} if (me.df.fieldtype == 'Datetime') {
 					me.set_value(frappe.datetime.now_datetime());
-				} if(me.df.fieldtype=='Time') {
+				} if (me.df.fieldtype == 'Time') {
 					me.set_value(frappe.datetime.now_time());
 				}
 				return false;
 			}
 		});
 	},
-	parse: function(value) {
-		if(value) {
+	parse: function (value) {
+		if (value) {
 			return frappe.datetime.user_to_str(value);
+		} else if (value === "") {
+			return value
 		}
 	},
-	format_for_input: function(value) {
-		if(value) {
+	format_for_input: function (value) {
+		if (value) {
 			return frappe.datetime.str_to_user(value);
 		}
 		return "";
 	},
-	validate: function(value) {
-		if(value && !frappe.datetime.validate(value)) {
+	validate: function (value) {
+		if (value && !frappe.datetime.validate(value)) {
 			let sysdefaults = frappe.sys_defaults;
 			let date_format = sysdefaults && sysdefaults.date_format
 				? sysdefaults.date_format : 'yyyy-mm-dd';

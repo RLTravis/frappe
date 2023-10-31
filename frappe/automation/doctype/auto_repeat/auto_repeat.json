@@ -91,7 +91,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Frequency",
-   "options": "\nDaily\nWeekly\nMonthly\nQuarterly\nHalf-yearly\nYearly",
+   "options": "\nDaily\nWeekly\nMonthly\nBimestrale\nQuarterly\nHalf-yearly\nYearly",
    "reqd": 1
   },
   {
@@ -211,7 +211,7 @@
   }
  ],
  "links": [],
- "modified": "2021-01-12 09:24:49.719611",
+ "modified": "2023-03-03 16:25:23.169060",
  "modified_by": "Administrator",
  "module": "Automation",
  "name": "Auto Repeat",

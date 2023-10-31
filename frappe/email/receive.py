@@ -438,6 +438,15 @@ class Email:
 
 		message_id = self.mail.get("Message-ID") or ""
 		self.message_id = get_string_between("<", message_id, ">")
+		self.references = self.mail.get("References") or ""
+
+		if self.references:
+			self.references = self.references.splitlines()
+			self.references = [get_string_between('<', real_row, '>')
+							 	for row in self.references
+							 	for real_row in row.split(',')
+							 	if real_row]
+			self.references = [row for row in self.references if row]
 
 		if self.mail["Date"]:
 			try:
@@ -628,6 +637,21 @@ class Email:
 		"""Extract thread ID from `[]`"""
 		l = re.findall(r"(?<=\[)[\w/-]+", self.subject)
 		return l and l[0] or None
+
+	def as_dict(self, convert_dates_to_str: bool = True):
+		"""Convert the Email to a dict"""
+		return {
+			'text_content': self.text_content,
+			'html_content': self.html_content,
+			'attachments': self.attachments,
+			'subject': self.subject,
+			'from_email': self.from_email,
+			'mail': self.mail.as_string(unixfrom=True),
+			'message_id': self.message_id,
+			'date': f'{self.date}'
+                				if convert_dates_to_str and isinstance(self.date, (datetime.datetime, datetime.date, datetime.time, datetime.timedelta))
+               					else self.date,
+		}
 
 
 # fix due to a python bug in poplib that limits it to 2048

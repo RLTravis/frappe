@@ -163,13 +163,17 @@ def delete_communication(event, reference_doctype, reference_docname):
 def get_permission_query_conditions(user):
 	if not user:
 		user = frappe.session.user
+
+	if 'CalendarAdmin' in frappe.get_roles():
+		return ''
+
 	return """(`tabEvent`.`event_type`='Public' or `tabEvent`.`owner`=%(user)s)""" % {
 		"user": frappe.db.escape(user),
 	}
 
 
 def has_permission(doc, user):
-	if doc.event_type == "Public" or doc.owner == user:
+	if doc.event_type == "Public" or doc.owner == user or 'CalendarAdmin' in frappe.get_roles():
 		return True
 
 	return False
@@ -196,7 +200,6 @@ def send_event_digest():
 				},
 				header=[frappe._("Events in Today's Calendar"), "blue"],
 			)
-
 
 @frappe.whitelist()
 def get_events(start, end, user=None, for_reminder=False, filters=None):
